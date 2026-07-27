@@ -16,8 +16,6 @@ public partial class MainWindow : Window
     private record ScreenTimeRow(string Site, int Visits, string Time);
 
     private readonly DispatcherTimer _refreshTimer;
-    private readonly HashSet<string> _seenAutoBlocks = new(StringComparer.OrdinalIgnoreCase);
-    private DateTime _lastPollDate = DateTime.Today;
     private HardBlockWindow? _hardBlockWindow;
 
     public MainWindow()
@@ -26,30 +24,15 @@ public partial class MainWindow : Window
 
         App.Friction.NudgeRequested += OnNudgeRequested;
         App.Friction.HardBlockTriggered += OnHardBlockTriggered;
+        App.Tracker.AutoBlockTriggered += OnAutoBlockTriggered;
 
         RefreshAll();
 
+        // WindowMonitor (owned by App) writes usage.json/blocklist.json on its own timer thread;
+        // this timer just keeps the visible tabs in sync with that live, in-process state.
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-        _refreshTimer.Tick += (_, _) => Poll();
+        _refreshTimer.Tick += (_, _) => RefreshAll();
         _refreshTimer.Start();
-    }
-
-    private void Poll()
-    {
-        if (DateTime.Today != _lastPollDate)
-        {
-            _lastPollDate = DateTime.Today;
-            _seenAutoBlocks.Clear();
-        }
-
-        App.Blocklist.Reload();
-        App.Tracker.Reload();
-
-        RefreshAll();
-
-        App.Friction.Evaluate(App.Tracker.TotalBrowserSeconds);
-
-        CheckForNewAutoBlocks();
     }
 
     private void RefreshAll()
@@ -112,17 +95,8 @@ public partial class MainWindow : Window
         return $"{(int)ts.TotalHours}h {ts.Minutes}m";
     }
 
-    private void CheckForNewAutoBlocks()
-    {
-        foreach (var entry in App.Blocklist.AutoBlocked)
-        {
-            if (entry.ExpiresUtc <= DateTime.UtcNow) continue;
-            if (!_seenAutoBlocks.Add(entry.Site)) continue;
-
-            var visits = App.Tracker.TodaySnapshot.TryGetValue(entry.Site, out var usage) ? usage.Visits : 0;
-            AutoBlockNotifyWindow.ForAutoBlock(entry.Site, visits).Show();
-        }
-    }
+    private void OnAutoBlockTriggered(object? sender, AutoBlockTriggeredEventArgs e) =>
+        Dispatcher.Invoke(() => AutoBlockNotifyWindow.ForAutoBlock(e.Site, e.Visits).Show());
 
     private void OnNudgeRequested(object? sender, NudgeRequestedEventArgs e) =>
         Dispatcher.Invoke(() => new AutoBlockNotifyWindow(e.Message).Show());
