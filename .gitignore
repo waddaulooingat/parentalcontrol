@@ -1,0 +1,12 @@
+## .NET build artifacts
+bin/
+obj/
+
+## User-specific files
+*.user
+*.suo
+.vs/
+
+## Rider / VS Code
+.idea/
+.vscode/
