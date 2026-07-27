@@ -150,30 +150,13 @@ reg add "HKCU\Software\Policies\Microsoft\Internet Explorer\Control Panel" /v Pr
 
 ## What Still Needs Wiring
 
-### 1. Full-screen hard block WPF window
+### Done
 
-`FrictionEngine.HardBlockTriggered` event fires at 60 minutes but no WPF block window exists yet in the UI project. Need to create a `HardBlockWindow.xaml` similar to the one in the old ScreenTimeMonitor project — full screen, dark background, PIN override button.
+1. **Full-screen hard block WPF window** — `ParentalGuard.UI/HardBlockWindow.xaml(.cs)`: maximized, borderless, dark background, "Parent Override" button gated by `PinDialog`. `MainWindow` subscribes to `FrictionEngine.HardBlockTriggered` and shows it (guarding against opening a second one while it's already up).
+2. **Auto-block notification window** — `ParentalGuard.UI/AutoBlockNotifyWindow.xaml(.cs)`: a bottom-right toast, auto-dismisses after 8s or on click. `AutoBlockNotifyWindow.ForAutoBlock(site, visits)` renders the exact required copy: *"You have visited [site] [N] times today. Blocked for today."* The same window (via its plain message constructor) is reused for `FrictionEngine.NudgeRequested` toasts.
+3. **WindowMonitor connected in the service** — `ParentalGuardService` instantiates `WindowMonitor`, `UsageTracker`, and `FrictionEngine`, wires `SiteChanged`/`Heartbeat` into the tracker, and runs a 10s `PeriodicTimer` loop calling `_tracker.ResetIfNewDay()` + `_friction.Evaluate(_tracker.TotalBrowserSeconds)` (see `FrictionLoopAsync`).
 
-### 2. Auto-block notification window
-
-When `UsageTracker.AutoBlockTriggered` fires, the service/UI needs to show a message. Since the UI is a WPF app (not a system tray WinForms app), this can be a `MessageBox` or a dedicated `AutoBlockNotifyWindow.xaml`. Message should read:
-
-> *"You have visited [site] [N] times today. Blocked for today."*
-
-### 3. WindowMonitor not yet connected in service
-
-`WindowMonitor.cs` is in Core but is not instantiated in `ParentalGuardService.cs`. It should be started in the service so visit/time tracking runs even when the UI is closed. Wire:
-
-```csharp
-_monitor = new WindowMonitor();
-_tracker = new UsageTracker(_whitelist, _blocklist);
-_friction = new FrictionEngine();
-_monitor.SiteChanged += _tracker.OnSiteChanged;
-_friction.NudgeRequested += /* show balloon or notification */;
-_friction.HardBlockTriggered += /* show hard block window */;
-_monitor.Start();
-// 10-second timer → _friction.Evaluate(_tracker.TotalBrowserSeconds())
-```
+Because the service normally runs in Session 0, isolated from the interactive desktop, it cannot itself pop WPF windows — see the caveat comment on `ParentalGuardService`. The service is the single writer of `usage.json`/`blocklist.json`; `ParentalGuard.UI` reloads those files (`BlocklistManager.Reload()` / `UsageTracker.Reload()`) and is the one that actually shows the hard-block/auto-block/nudge windows, via a 5s polling loop in `MainWindow`. **Not yet verified on real Windows**: whether `WindowMonitor.TryGetActiveBrowserSite()` can see the logged-in user's foreground window from a Session 0 service at all. If it can't, move the `WindowMonitor` instantiation from `ParentalGuardService` into `ParentalGuard.UI` (or a logon-triggered Scheduled Task) instead — the event wiring is identical either way.
 
 ### 4. PsatGateChecker (optional — carry from old project)
 
