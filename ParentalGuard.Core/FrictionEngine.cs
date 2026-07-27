@@ -1,3 +1,5 @@
+using Newtonsoft.Json;
+
 namespace ParentalGuard.Core;
 
 public enum FrictionPhase
@@ -50,22 +52,56 @@ public class FrictionEngine
 
     private readonly Random _random = new();
     private readonly TimeSpan _nudgeCooldown;
+    private readonly string _overridePath;
     private DateTime _nextNudgeAllowedUtc = DateTime.MinValue;
     private FrictionPhase _lastPhase = FrictionPhase.Free;
+    private DateTime _overrideUntilUtc = DateTime.MinValue;
 
     public event EventHandler<NudgeRequestedEventArgs>? NudgeRequested;
     public event EventHandler? HardBlockTriggered;
 
-    public FrictionEngine(TimeSpan? nudgeCooldown = null)
+    public FrictionEngine(TimeSpan? nudgeCooldown = null, string? overridePath = null)
     {
         _nudgeCooldown = nudgeCooldown ?? TimeSpan.FromMinutes(3);
+        _overridePath = overridePath ?? Path.Combine(AppPaths.DataDirectory, "override.json");
+        LoadOverride();
     }
 
     public FrictionPhase CurrentPhase { get; private set; } = FrictionPhase.Free;
 
+    /// <summary>True while a parent-granted temporary override is in effect.</summary>
+    public bool IsOverrideActive => DateTime.UtcNow < _overrideUntilUtc;
+
+    /// <summary>Time left on the current override, or <see cref="TimeSpan.Zero"/> if none is active.</summary>
+    public TimeSpan OverrideRemaining => IsOverrideActive ? _overrideUntilUtc - DateTime.UtcNow : TimeSpan.Zero;
+
+    /// <summary>
+    /// Suspends nudges and the hard block for the given duration - e.g. a parent granting
+    /// "1 more hour" from the hard-block screen or the Settings tab. Persisted so it survives
+    /// a UI restart mid-override.
+    /// </summary>
+    public void GrantOverride(TimeSpan duration)
+    {
+        _overrideUntilUtc = DateTime.UtcNow + duration;
+        SaveOverride();
+    }
+
+    public void ClearOverride()
+    {
+        _overrideUntilUtc = DateTime.MinValue;
+        SaveOverride();
+    }
+
     /// <summary>Evaluates the current phase given today's total browser seconds and raises events as needed.</summary>
     public FrictionPhase Evaluate(double totalBrowserSeconds)
     {
+        if (IsOverrideActive)
+        {
+            CurrentPhase = FrictionPhase.Free;
+            _lastPhase = FrictionPhase.Free;
+            return FrictionPhase.Free;
+        }
+
         var elapsed = TimeSpan.FromSeconds(totalBrowserSeconds);
         var phase = DeterminePhase(elapsed);
         CurrentPhase = phase;
@@ -118,5 +154,36 @@ public class FrictionEngine
         CurrentPhase = FrictionPhase.Free;
         _lastPhase = FrictionPhase.Free;
         _nextNudgeAllowedUtc = DateTime.MinValue;
+        ClearOverride();
+    }
+
+    private class OverrideState
+    {
+        public DateTime OverrideUntilUtc { get; set; }
+    }
+
+    private void LoadOverride()
+    {
+        try
+        {
+            if (!File.Exists(_overridePath)) return;
+
+            var json = File.ReadAllText(_overridePath);
+            var state = JsonConvert.DeserializeObject<OverrideState>(json);
+            if (state != null) _overrideUntilUtc = state.OverrideUntilUtc;
+        }
+        catch (IOException)
+        {
+        }
+        catch (JsonException)
+        {
+        }
+    }
+
+    private void SaveOverride()
+    {
+        Directory.CreateDirectory(AppPaths.DataDirectory);
+        var json = JsonConvert.SerializeObject(new OverrideState { OverrideUntilUtc = _overrideUntilUtc }, Formatting.Indented);
+        File.WriteAllText(_overridePath, json);
     }
 }

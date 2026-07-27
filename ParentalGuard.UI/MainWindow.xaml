@@ -103,6 +103,11 @@
                     </StackPanel>
                 </GroupBox>
 
+                <GroupBox Header="Temporary Override" Margin="0,0,0,12" Padding="8">
+                    <Button Content="Grant Temporary Override" HorizontalAlignment="Left"
+                            Click="GrantOverride_Click" />
+                </GroupBox>
+
                 <GroupBox Header="Windows Service" Margin="0,0,0,12" Padding="8">
                     <StackPanel Orientation="Horizontal">
                         <Button Content="Install" Margin="0,0,8,0" Click="InstallService_Click" />

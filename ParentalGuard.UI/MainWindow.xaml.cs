@@ -63,7 +63,9 @@ public partial class MainWindow : Window
         ScreenTimeGrid.ItemsSource = rows;
 
         TotalTimeText.Text = $"Total today: {FormatDuration(App.Tracker.TotalBrowserSeconds)}";
-        PhaseText.Text = $"Phase: {App.Friction.CurrentPhase}";
+        PhaseText.Text = App.Friction.IsOverrideActive
+            ? $"Override active - {FormatDuration(App.Friction.OverrideRemaining.TotalSeconds)} remaining"
+            : $"Phase: {App.Friction.CurrentPhase}";
     }
 
     private void RefreshDomains()
@@ -106,7 +108,7 @@ public partial class MainWindow : Window
         {
             if (_hardBlockWindow is { IsVisible: true }) return;
 
-            _hardBlockWindow = new HardBlockWindow(App.Pin);
+            _hardBlockWindow = new HardBlockWindow(App.Pin, App.Friction);
             _hardBlockWindow.Closed += (_, _) => _hardBlockWindow = null;
             _hardBlockWindow.Show();
         });
@@ -174,6 +176,22 @@ public partial class MainWindow : Window
         }
         catch (Win32Exception)
         {
+        }
+    }
+
+    private void GrantOverride_Click(object sender, RoutedEventArgs e)
+    {
+        if (!PinDialog.TryUnlock(this, App.Pin)) return;
+
+        var durationDialog = new OverrideDurationDialog { Owner = this };
+        if (durationDialog.ShowDialog() != true || durationDialog.SelectedDuration is not { } duration) return;
+
+        App.Friction.GrantOverride(duration);
+        RefreshScreenTime();
+
+        if (_hardBlockWindow is { IsVisible: true } window)
+        {
+            window.GrantedExternally();
         }
     }
 

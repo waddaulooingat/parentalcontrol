@@ -67,6 +67,7 @@ ParentalGuard/
 | `weekly_history.json` | Rolling 35-day usage history |
 | `requests.db` | SQLite — every proxy request logged |
 | `pin.dat` | Parent PIN stored as binary string |
+| `override.json` | Temporary override expiry timestamp (see Temporary Override below) |
 
 ---
 
@@ -85,7 +86,18 @@ ParentalGuard/
 - 30–45 min: casual confrontational nudges ("Come on bro...", "Bro. Put it down.")
 - 45–55 min: escalated messages ("45 minutes. Are you serious?")
 - 55–60 min: final warning messages ("Five minutes to hard block. Walk away.")
-- 60 min: hard block (currently triggers event — wire up a full-screen WPF block window)
+- 60 min: hard block - full-screen `HardBlockWindow`, PIN-gated "Parent Override" button
+
+### Temporary Override
+
+- Two entry points, both PIN-gated then prompt for a duration (30 min / 1 hr / 2 hr) via `OverrideDurationDialog`:
+  - The "Parent Override" button on `HardBlockWindow` itself (reactive - kid hits the wall, parent grants relief)
+  - "Grant Temporary Override" in the Settings tab (proactive - parent grants extra time before the block hits; closes an open `HardBlockWindow` too, via `HardBlockWindow.GrantedExternally()`)
+- `FrictionEngine.GrantOverride(TimeSpan)` sets an `OverrideUntilUtc` timestamp, persisted to `override.json` so it survives a UI restart mid-override
+- While active, `FrictionEngine.Evaluate()` short-circuits to `FrictionPhase.Free` - no nudges, no hard block - regardless of total browser seconds
+- Cleared automatically on day rollover (`FrictionEngine.ResetForNewDay()`)
+- Scope is deliberately narrow: it only suspends the *time-based* friction ladder, not the domain/keyword blocklist - granting extra screen time doesn't unblock adult content
+- Earlier bug this replaced: the original "Parent Override" button just PIN-gated a `Close()` with no state change, so `FrictionEngine.Evaluate()` still saw 60+ minutes on the very next heartbeat (~2s later) and popped the hard-block window right back up - there was no real override, just a ~2s flicker
 
 ### Educational Whitelist
 
