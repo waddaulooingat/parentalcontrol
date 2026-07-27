@@ -1,6 +1,6 @@
+using System.Net;
+using System.Text;
 using Newtonsoft.Json;
-using PdfSharp.Drawing;
-using PdfSharp.Pdf;
 
 namespace ParentalGuard.Core;
 
@@ -103,14 +103,14 @@ public static class ContentFilter
              .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
 }
 
-/// <summary>Generates the parent-facing weekly usage PDF report via PdfSharp.</summary>
+/// <summary>Generates the parent-facing weekly usage report as a self-contained HTML file.</summary>
 public static class WeeklyReportGenerator
 {
     public static string Generate(IReadOnlyList<DayUsageRecord> days, string? outputDirectory = null)
     {
         var dir = outputDirectory ?? AppPaths.ReportsDirectory;
         Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, $"WeeklyReport_{DateTime.Today:yyyy-MM-dd}.pdf");
+        var path = Path.Combine(dir, $"WeeklyReport_{DateTime.Today:yyyy-MM-dd}.html");
 
         var filteredDays = days
             .Select(d => new DayUsageRecord { DateLocal = d.DateLocal, Sites = ContentFilter.Filter(d.Sites) })
@@ -137,44 +137,60 @@ public static class WeeklyReportGenerator
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        using var document = new PdfDocument();
-        document.Info.Title = "Parental Guard Weekly Report";
+        var html = BuildHtml(filteredDays, totalSeconds, topSite, autoBlockedSites);
+        File.WriteAllText(path, html);
+        return path;
+    }
 
-        var page = document.AddPage();
-        using var gfx = XGraphics.FromPdfPage(page);
-
-        var titleFont = new XFont("Verdana", 20, XFontStyleEx.Bold);
-        var headerFont = new XFont("Verdana", 13, XFontStyleEx.Bold);
-        var bodyFont = new XFont("Verdana", 11, XFontStyleEx.Regular);
-
-        double y = 40;
-        gfx.DrawString("Parental Guard - Weekly Report", titleFont, XBrushes.Black, new XPoint(40, y));
-        y += 34;
-
-        gfx.DrawString($"Total time: {FormatDuration(totalSeconds)}", bodyFont, XBrushes.Black, new XPoint(40, y));
-        y += 20;
-        gfx.DrawString($"Top site: {topSite}", bodyFont, XBrushes.Black, new XPoint(40, y));
-        y += 20;
-        gfx.DrawString(
-            "Auto-blocked sites: " + (autoBlockedSites.Count == 0 ? "none" : string.Join(", ", autoBlockedSites)),
-            bodyFont, XBrushes.Black, new XPoint(40, y));
-        y += 34;
-
-        gfx.DrawString("Daily breakdown", headerFont, XBrushes.Black, new XPoint(40, y));
-        y += 24;
-
+    private static string BuildHtml(
+        List<DayUsageRecord> filteredDays, double totalSeconds, string topSite, List<string> autoBlockedSites)
+    {
+        var rows = new StringBuilder();
         foreach (var day in filteredDays)
         {
             var daySeconds = day.Sites.Values.Sum(s => s.Seconds);
             var dayVisits = day.Sites.Values.Sum(s => s.Visits);
-            gfx.DrawString(
-                $"{day.DateLocal:ddd MMM d}: {FormatDuration(daySeconds)}, {dayVisits} visits",
-                bodyFont, XBrushes.Black, new XPoint(50, y));
-            y += 18;
+            rows.Append("<tr><td>").Append(WebUtility.HtmlEncode(day.DateLocal.ToString("ddd MMM d")))
+                .Append("</td><td>").Append(FormatDuration(daySeconds))
+                .Append("</td><td>").Append(dayVisits)
+                .Append("</td></tr>\n");
         }
 
-        document.Save(path);
-        return path;
+        var autoBlockedText = autoBlockedSites.Count == 0
+            ? "none"
+            : WebUtility.HtmlEncode(string.Join(", ", autoBlockedSites));
+
+        return $@"
+            <!doctype html>
+            <html lang=""en"">
+            <head>
+            <meta charset=""utf-8"">
+            <title>Parental Guard - Weekly Report</title>
+            <style>
+              body {{ font-family: Verdana, Arial, sans-serif; color: #1a1a1a; margin: 40px; }}
+              h1 {{ font-size: 24px; margin-bottom: 24px; }}
+              h2 {{ font-size: 16px; margin-top: 32px; }}
+              .summary p {{ margin: 6px 0; }}
+              table {{ border-collapse: collapse; margin-top: 12px; }}
+              th, td {{ padding: 6px 16px 6px 0; text-align: left; }}
+              th {{ border-bottom: 1px solid #999; }}
+            </style>
+            </head>
+            <body>
+            <h1>Parental Guard - Weekly Report</h1>
+            <div class=""summary"">
+              <p><strong>Total time:</strong> {FormatDuration(totalSeconds)}</p>
+              <p><strong>Top site:</strong> {WebUtility.HtmlEncode(topSite)}</p>
+              <p><strong>Auto-blocked sites:</strong> {autoBlockedText}</p>
+            </div>
+            <h2>Daily breakdown</h2>
+            <table>
+              <tr><th>Day</th><th>Time</th><th>Visits</th></tr>
+              {rows}
+            </table>
+            </body>
+            </html>
+            ";
     }
 
     private static string FormatDuration(double seconds)

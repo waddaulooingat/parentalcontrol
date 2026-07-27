@@ -19,7 +19,7 @@ ParentalGuard/
 │   ├── Logger.cs                # SQLite request logger
 │   ├── ProxyEngine.cs           # HttpListener local proxy on port 8877
 │   ├── UsageTracker.cs          # Visit counting + time tracking + auto-block trigger
-│   ├── WeeklyReport.cs          # WeeklyHistoryStore + ContentFilter + PDF generator
+│   ├── WeeklyReport.cs          # WeeklyHistoryStore + ContentFilter + HTML report generator
 │   └── WindowMonitor.cs        # Detects active browser + extracts site from title
 │
 ├── ParentalGuard.Service/       # Windows Service - proxy enforcement only, see note below
@@ -46,7 +46,6 @@ ParentalGuard/
 ```xml
 <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
 <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-<PackageReference Include="PdfSharp" Version="6.0.0" />
 ```
 
 ### ParentalGuard.Service
@@ -119,13 +118,14 @@ User can add custom sites via the Edu Whitelist tab in the UI.
 - StevenBlack porn list fetched 5 minutes after service start, then every 24 hours
 - Reloads `blocklist.json` every 10s so auto-blocks added by `ParentalGuard.UI`'s tracking take effect promptly
 
-### Weekly PDF Report
+### Weekly Report
 
+- Self-contained HTML file (`WeeklyReportGenerator`) - no PDF library, opens directly in the default browser via `Process.Start` with `UseShellExecute = true`
 - PIN-gated in the UI
 - Filters adult/gambling content via `ContentFilter` before generating
 - Shows: total time, top site, auto-blocked sites, daily breakdown with visit counts
-- No emoji (avoids PdfSharp font resolver issues)
-- Saved to `%Documents%\ParentalGuardReports\`
+- All dynamic values (site names, etc.) are HTML-encoded via `WebUtility.HtmlEncode` before being embedded
+- Saved to `%Documents%\ParentalGuardReports\` as `WeeklyReport_yyyy-MM-dd.html`
 
 ---
 
