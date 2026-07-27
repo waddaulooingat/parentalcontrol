@@ -1,0 +1,22 @@
+<Window x:Class="ParentalGuard.UI.HardBlockWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Parental Guard"
+        WindowStyle="None"
+        WindowState="Maximized"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="#FF0A0A0A">
+    <Grid>
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="700">
+            <TextBlock Text="TIME'S UP" FontSize="64" FontWeight="Bold" Foreground="#FFE53935"
+                       HorizontalAlignment="Center" Margin="0,0,0,20" />
+            <TextBlock Text="You've hit 60 minutes of browsing today. Step away from the screen."
+                       FontSize="22" Foreground="White" TextWrapping="Wrap" TextAlignment="Center"
+                       Margin="0,0,0,40" />
+            <Button x:Name="OverrideButton" Content="Parent Override" Width="200" Height="40"
+                    FontSize="14" Click="Override_Click" HorizontalAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</Window>
